@@ -192,7 +192,7 @@ class Client:
             print(f"[{self.symbol}] Switched to Isolated Margin.")
         except InvalidRequestError as e:
             if "110026" not in str(e): 
-                # print(f"Warning cant set margin mode: {e}")
+                print(f"Warning cant set margin mode: {e}")
                 pass
 
         # Set Leverage
@@ -220,7 +220,7 @@ class Client:
         # Determine TimeInForce
         tif = "PostOnly" if post_only else "GTC"
 
-        print(f"[{self.symbol}] Placing LIMIT {side} ({tif}): {safe_qty} @ {safe_price}")
+        # print(f"[{self.symbol}] Placing LIMIT {side} ({tif}): {safe_qty} @ {safe_price}")
 
         response = self.session.place_order(
             category="linear",
@@ -241,7 +241,7 @@ class Client:
         """
         safe_qty = self._round_qty(qty)
 
-        print(f"[{self.symbol}] Placing MARKET {side}: {safe_qty}")
+        # print(f"[{self.symbol}] Placing MARKET {side}: {safe_qty}")
 
         response = self.session.place_order(
             category="linear",
