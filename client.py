@@ -49,8 +49,8 @@ class Client:
             self.session.endpoint = self.http_url
 
         print(f"[{self.symbol}] Initialized on {self.endpoint_env.upper()}")
-        print(f" - HTTP: {self.http_url}")
-        print(f" - WS:   {self.ws_url}")
+        # print(f" - HTTP: {self.http_url}")
+        # print(f" - WS:   {self.ws_url}")
 
         # Cache precision data immediately upon startup
         self.precision_data = self._fetch_symbol_info()
@@ -215,10 +215,10 @@ class Client:
                 buyLeverage=str(leverage),
                 sellLeverage=str(leverage)
             )
-            print(f"[{self.symbol}] Switched to Isolated Margin.")
+            # print(f"[{self.symbol}] Switched to Isolated Margin.")
         except InvalidRequestError as e:
             if "110026" not in str(e): 
-                print(f"Warning cant set margin mode: {e}")
+                # print(f"Warning cant set margin mode: {e}")
                 pass
 
         # Set Leverage
@@ -229,7 +229,7 @@ class Client:
                 buyLeverage=str(leverage),
                 sellLeverage=str(leverage)
             )
-            print(f"[{self.symbol}] Leverage set to {leverage}x.")
+            # print(f"[{self.symbol}] Leverage set to {leverage}x.")
         except InvalidRequestError as e:
             if "110043" not in str(e):
                 print(f"Warning setting leverage: {e}")
