@@ -19,7 +19,7 @@ API_ENDPOINT=demo # or testnet or mainnet
 The client is bound to a single trading pair (Symbol) upon instantiation. It immediately fetches instrument info (tick size, lot size) to ensure all subsequent calculations are precise.
 
 ```python
-from bybit_client import Client
+from client import Client
 
 # Initialize for Bitcoin
 client = Client("BTCUSDT")
@@ -123,7 +123,7 @@ Cancels **ALL** open orders for the bound symbol.
 ## 📝 Example Usage
 
 ```python
-from bybit_client import Client
+from client import Client
 
 client = Client("ETHUSDT")
 
