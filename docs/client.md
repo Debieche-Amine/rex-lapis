@@ -37,7 +37,7 @@ Configures the account for the specific symbol.
 *Note: This method suppresses "not modified" errors from Bybit (e.g., if leverage is already correct), keeping logs clean.*
 
 ```python
-client.setup_bot(leverage=10)
+client.setup_bot(leverage=5)
 ```
 
 ---
