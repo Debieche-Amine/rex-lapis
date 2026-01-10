@@ -97,16 +97,23 @@ All trading methods utilize internal helpers (`_round_qty` and `_round_price`) t
 *   **Price (Buy):** Rounded **DOWN** (Floor) to nearest tick.
 *   **Price (Sell):** Rounded **UP** (Ceiling) to nearest tick.
 
-### `place_limit_order(side, qty, price, reduce_only=False)`
+### `place_limit_order(side, qty, price, reduce_only=False, post_only=False) -> str`
 Places a standard Limit order.
 
 *   `side`: `"Buy"` or `"Sell"`.
 *   `qty`: Amount in coin (e.g., BTC).
 *   `price`: Trigger price in USDT.
 *   `reduce_only`: If `True`, guarantees the order will only close a position, never open a new one.
+*   `post_only`: If `True`, sets timeInForce to **"PostOnly"**. The order will be rejected if it would fill immediately (guarantees Maker fees).
+*   **Returns:** The Order ID as a `str`.
 
-### `place_market_order(side, qty, reduce_only=False)`
+### `place_market_order(side, qty, reduce_only=False) -> str`
 Places a Market order (Instant fill).
+
+*   `side`: `"Buy"` or `"Sell"`.
+*   `qty`: Amount in coin (e.g., BTC).
+*   `reduce_only`: If `True`, guarantees the order will only close a position.
+*   **Returns:** The Order ID as a `str`.
 
 ### `cancel_all_orders()`
 Cancels **ALL** open orders for the bound symbol.
