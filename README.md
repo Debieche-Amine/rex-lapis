@@ -28,7 +28,7 @@ API_TEST determine where to connect:
 Check <./docs/client.md> for a more detailed documentation
 
 ```python
-from bybit_client import Client
+from client import Client
 
 # 1. Initialize (binds to a specific symbol)
 client = Client("BTCUSDT")
