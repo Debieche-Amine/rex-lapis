@@ -14,7 +14,7 @@ if __name__ == "__main__":
     print(f"Price: {price}")
     
 
-    id = client.place_limit_order(side="Buy",qty=0.01,price=83266.00)
+    id = client.place_limit_order(side="Buy",qty=0.01,price=83266.00,post_only=True)
     print(id)
 
 

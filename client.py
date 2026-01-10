@@ -208,11 +208,19 @@ class Client:
             if "110043" not in str(e):
                 print(f"Warning setting leverage: {e}")
 
-    def place_limit_order(self, side: str, qty: float, price: float, reduce_only: bool = False):
+    def place_limit_order(self, side: str, qty: float, price: float, reduce_only: bool = False, post_only: bool = False) -> str:
+        """
+        Places a Limit order.
+        :param post_only: If True, sets timeInForce to 'PostOnly' (guarantees Maker fee).
+        Returns the Order ID (str).
+        """
         safe_qty = self._round_qty(qty)
         safe_price = self._round_price(price, side)
+        
+        # Determine TimeInForce
+        tif = "PostOnly" if post_only else "GTC"
 
-        print(f"[{self.symbol}] Placing LIMIT {side}: {safe_qty} @ {safe_price}")
+        print(f"[{self.symbol}] Placing LIMIT {side} ({tif}): {safe_qty} @ {safe_price}")
 
         response = self.session.place_order(
             category="linear",
@@ -221,12 +229,16 @@ class Client:
             orderType="Limit",
             qty=safe_qty,
             price=safe_price,
-            timeInForce="GTC",
+            timeInForce=tif, 
             reduceOnly=reduce_only
         )
         return response['result']['orderId']
 
-    def place_market_order(self, side: str, qty: float, reduce_only: bool = False):
+    def place_market_order(self, side: str, qty: float, reduce_only: bool = False) -> str:
+        """
+        Places a Market order.
+        Returns the Order ID (str).
+        """
         safe_qty = self._round_qty(qty)
 
         print(f"[{self.symbol}] Placing MARKET {side}: {safe_qty}")
