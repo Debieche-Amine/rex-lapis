@@ -1,108 +1,37 @@
-import time
 from client import Client
 
-def run_example_bot():
-    print("--- 🤖 STARTING BYBIT BOT DEMO ---")
-    
-    # 1. INITIALIZATION
-    # We bind the client to BTCUSDT immediately.
-    symbol = "BTCUSDT"
-    client = Client(symbol)
-    print(f"✅ Client initialized for {symbol}")
+# 1. Initialize (binds to a specific symbol)
+client = Client("BTCUSDT")
 
+# 2. Setup Account (Auto-switches to Isolated Margin & sets Leverage)
+client.setup_bot(leverage=5)
 
-    # 2. CHECK WALLET
-    balance = client.get_usdt_balance()
-    print(f"💰 USDT Balance: ${balance:.2f}")
-    
-    if balance < 10:
-        print("❌ Balance too low to run demo safely.")
-        return
+# 3. Get Data
+price = client.get_current_price()
+balance = client.get_usdt_balance()
 
-    # 3. SETUP (Leverage & Margin)
-    # This ensures we are in Isolated mode with 5x leverage.
-    print("\n--- ⚙️ SETUP ---")
-    client.setup_bot(leverage=5)
+# Get recent candles (Intervals: "1", "5", "15", "60", "D")
+candles = client.get_candles(interval="60", limit=5)
+last_close = candles[-1]['close']
 
-    # 4. MARKET ANALYSIS
-    print("\n--- 📊 MARKET DATA ---")
-    
-    # Get current price
-    current_price = client.get_current_price()
-    print(f"Current Price: ${current_price}")
+print(f"Price: ${price} | Balance: ${balance} | Last Close: ${last_close}")
 
-    # Get recent candles (last 5 hours) to see trend
-    candles = client.get_candles(interval="60", limit=5)
-    last_candle = candles[-1]
-    print(f"Last Candle Close: ${last_candle['close']} (Vol: {last_candle['volume']})")
+# 4. Place Orders (Returns Order ID string)
+# Note: Inputs are automatically rounded to the correct precision.
 
-    # 5. EXECUTION: ENTER LONG POSITION
-    # Let's open a small Long position using a Market Order
-    print("\n--- 🚀 ENTERING POSITION ---")
-    qty_to_buy = 0.005 # BTC
-    
-    try:
-        client.place_market_order(side="Buy", qty=qty_to_buy)
-        print("✅ Market Buy Order Sent")
-    except Exception as e:
-        print(f"❌ Failed to enter: {e}")
-        return
+# Limit Buy (Maker)
+buy_id = client.place_limit_order(
+    side="Buy", 
+    qty=0.01, 
+    price=60000.50, 
+    post_only=True  # Guarantees Maker fee (cancels if Taker)
+)
 
-    # Wait a moment for exchange to process
-    time.sleep(2)
+# Market Close (Reduce Only)
+sell_id = client.place_market_order(
+    side="Sell", 
+    qty=0.01, 
+    reduce_only=True # Ensures we don't flip position
+)
 
-    # 6. VERIFY POSITION
-    print("\n--- 🕵️ CHECKING POSITION ---")
-    position = client.get_open_position()
-    
-    if position:
-        entry_price = position['entry_price']
-        size = position['size']
-        print(f"✅ Position Open: {size} BTC @ ${entry_price}")
-        print(f"   Unrealized PnL: {position['unrealized_pnl']} USDT")
-        
-        # 7. STRATEGY: PLACE TAKE PROFIT
-        # We want to sell if price goes up 1%
-        # IMPORTANT: reduce_only=True ensures this order closes the position 
-        # and doesn't flip it into a Short if we accidentally double click.
-        
-        target_price = entry_price * 1.01 
-        print(f"\n--- 🎯 PLACING TAKE PROFIT @ ${target_price:.2f} ---")
-        
-        try:
-            client.place_limit_order(
-                side="Sell", 
-                qty=size, 
-                price=target_price, 
-                reduce_only=True
-            )
-            print("✅ Take Profit Limit Order Placed")
-        except Exception as e:
-            print(f"❌ Failed to set TP: {e}")
-            
-    else:
-        print("⚠️ No position found (Order might not have filled yet?)")
-
-    # 8. MONITORING OPEN ORDERS
-    print("\n--- 📋 OPEN ORDERS ---")
-    open_orders = client.get_open_orders()
-    for o in open_orders:
-        print(f" 🔹 {o['side']} {o['type']}: {o['qty']} @ ${o['price']} (Status: {o['status']})")
-
-    # 9. CLEANUP (Optional for Demo)
-    # Cancel the TP order we just made, just to show how it's done.
-    print("\n--- 🧹 CLEANUP (Canceling Orders) ---")
-    time.sleep(2)
-    client.cancel_all_orders()
-    print("✅ All open orders canceled.")
-
-    # Close the position (Market Sell remaining size)
-    if position:
-        print("🔻 Closing position via Market...")
-        client.place_market_order(side="Sell", qty=position['size'], reduce_only=True)
-        print("✅ Position Closed.")
-
-    print("\n--- 🏁 DEMO COMPLETE ---")
-
-if __name__ == "__main__":
-    run_example_bot()
+print(f"Buy ID: {buy_id} | Sell ID: {sell_id}")
