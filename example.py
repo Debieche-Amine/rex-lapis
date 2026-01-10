@@ -10,9 +10,6 @@ def run_example_bot():
     client = Client(symbol)
     print(f"✅ Client initialized for {symbol}")
 
-    if not client.testnet:
-        print("Exiting as a security precaution. This example should only be run on the testnet. Edit the code to allow this if you are certain.")
-        exit()
 
     # 2. CHECK WALLET
     balance = client.get_usdt_balance()
