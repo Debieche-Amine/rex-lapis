@@ -6,7 +6,7 @@ Now as Zhongli, he embodies the belief that a contract—once made—must always
 
 
 
-## 1.Setup
+## 1. Setup
 
 ```bash
 pip install -r requirements.txt
@@ -22,8 +22,8 @@ API_TEST determine if pybit talks to <https://testnet.bybit.com> or <https://www
 
 
 
-## 1.Quick Start Example
-Check [./docs/client.md] for a more detailed documentation
+## 2. Quick Start Example
+Check <./docs/client.md> for a more detailed documentation
 
 ```python
 from bybit_client import Client
