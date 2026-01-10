@@ -12,22 +12,48 @@ class Client:
         """
         Initializes the HTTP session and binds this client to a specific symbol.
         Forces 'linear' category (USDT Perpetuals).
+        Handles API_ENDPOINT switching (demo, testnet, mainnet).
         """
         self.api_key = os.getenv("API_KEY")
         self.api_secret = os.getenv("API_SECRET")
-        self.testnet = os.getenv("API_TEST", "false").lower() == "true"
         
+        # Options: 'demo', 'testnet', 'mainnet'
+        self.endpoint_env = os.getenv("API_ENDPOINT", "testnet").lower()
         self.symbol = symbol.upper()
 
+        # 1. Determine URLs and Testnet Flag based on Env
+        if self.endpoint_env == "demo":
+            self.testnet = True # Demo behaves like testnet for pybit logic
+            self.http_url = "https://api-demo.bybit.com"
+            self.ws_url = "wss://stream-demo.bybit.com/v5/public/linear" # Correct Demo WS
+        elif self.endpoint_env == "mainnet":
+            self.testnet = False
+            self.http_url = "https://api.bybit.com"
+            self.ws_url = "wss://stream.bybit.com/v5/public/linear"
+        else: # Default to Testnet
+            self.testnet = True
+            self.http_url = "https://api-testnet.bybit.com"
+            self.ws_url = "wss://stream-testnet.bybit.com/v5/public/linear"
+
+        # 2. Initialize HTTP Session
         self.session = HTTP(
             testnet=self.testnet,
             api_key=self.api_key,
             api_secret=self.api_secret,
         )
 
+        # 3. Override Endpoint if using Demo
+        # Pybit defaults to standard testnet/mainnet URLs. 
+        # We must manually overwrite it for Demo.
+        if self.endpoint_env == "demo":
+            self.session.endpoint = self.http_url
+
+        print(f"[{self.symbol}] Initialized on {self.endpoint_env.upper()}")
+        print(f" - HTTP: {self.http_url}")
+        print(f" - WS:   {self.ws_url}")
+
         # Cache precision data immediately upon startup
         self.precision_data = self._fetch_symbol_info()
-    
 
     # ==================================================================
     # HELPER: PRECISION & ROUNDING (Internal)

@@ -11,7 +11,7 @@ The client relies on a `.env` file in the root directory for authentication:
 ```env
 API_KEY=your_api_key_here
 API_SECRET=your_api_secret_here
-API_TEST=true  # Set to false for Mainnet
+API_ENDPOINT=demo # or testnet or mainnet
 ```
 
 ## 🚀 Initialization

@@ -16,10 +16,12 @@ Create a .env with
 ```bash
 API_KEY=
 API_SECRET=
-API_TEST=true
+API_ENDPOINT=demo # or testnet or mainnet
 ```
-API_TEST determine if pybit talks to <https://testnet.bybit.com> or <https://www.bybit.com>  
-
+API_TEST determine where to connect:
+- testnet is found on <https://testnet.bybit.com>,
+- mainnet is the normal <https://www.bybit.com>,
+- demo is accessed normally from mainnet, then going to demo trading, The Api endpoint is: <https://api-demo.bybit.com>
 
 
 ## 2. Quick Start Example
