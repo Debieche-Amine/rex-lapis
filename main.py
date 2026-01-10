@@ -4,6 +4,8 @@ if __name__ == "__main__":
     # Initialize client specifically for BTC
     client = Client("BTCUSDT")
 
+
+
     # 1. Setup (Run once)
     client.setup_bot(leverage=5)
 
@@ -12,7 +14,9 @@ if __name__ == "__main__":
     print(f"Price: {price}")
     
 
-    # client.place_limit_order(side="Buy",qty=0.01,price=83266.00)
+    id = client.place_limit_order(side="Buy",qty=0.01,price=83266.00)
+    print(id)
+
 
     orders = client.get_open_orders()
 

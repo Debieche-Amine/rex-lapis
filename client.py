@@ -27,6 +27,7 @@ class Client:
 
         # Cache precision data immediately upon startup
         self.precision_data = self._fetch_symbol_info()
+    
 
     # ==================================================================
     # HELPER: PRECISION & ROUNDING (Internal)
@@ -213,7 +214,7 @@ class Client:
 
         print(f"[{self.symbol}] Placing LIMIT {side}: {safe_qty} @ {safe_price}")
 
-        return self.session.place_order(
+        response = self.session.place_order(
             category="linear",
             symbol=self.symbol,
             side=side.capitalize(),
@@ -223,13 +224,14 @@ class Client:
             timeInForce="GTC",
             reduceOnly=reduce_only
         )
+        return response['result']['orderId']
 
     def place_market_order(self, side: str, qty: float, reduce_only: bool = False):
         safe_qty = self._round_qty(qty)
 
         print(f"[{self.symbol}] Placing MARKET {side}: {safe_qty}")
 
-        return self.session.place_order(
+        response = self.session.place_order(
             category="linear",
             symbol=self.symbol,
             side=side.capitalize(),
@@ -237,6 +239,7 @@ class Client:
             qty=safe_qty,
             reduceOnly=reduce_only
         )
+        return response['result']['orderId']
 
     def cancel_all_orders(self):
         return self.session.cancel_all_orders(
