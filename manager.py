@@ -283,6 +283,11 @@ class TradeManager:
         ops_logger.info(f"New Executor added: Entry={target_entry}, Loop={loop_trade}")
 
     def stop_all_entries(self):
+        print("this function isnt implemented yet, exiting..")
+        print("implement: Client::cancel_order(self,symbol: str, orderId: str) ")
+        print("and remove the exit")
+
+        exit()
         """
         Commands all executors to stop entering new trades.
         Active buy orders are cancelled.
