@@ -87,6 +87,30 @@ Fetches all active (unfilled) Limit or Conditional orders for the symbol.
 ]
 ```
 
+### `get_order_history(limit: int = 50, start_time: int = None)`
+Fetches historical orders (Filled, Cancelled, or Rejected). 
+
+*   **limit:** Number of records to fetch (max 100 per request).
+*   **start_time:** (Optional) UNIX timestamp in milliseconds. **Required** if you need to fetch data older than 7 days.
+
+**Return Structure:**
+```python
+[
+    {
+        "order_id": str,
+        "price": float,          # Original Limit price
+        "avg_price": float,      # Actual execution price (0 if cancelled)
+        "qty": float,            # Original requested qty
+        "filled_qty": float,     # Actual amount traded
+        "side": str,
+        "status": str,           # "Filled", "Cancelled", "Rejected"
+        "created_time": int,     # Timestamp (ms)
+        "reduce_only": bool
+    },
+    ...
+]
+```
+
 ---
 
 ## 🛠️ Trading Methods
