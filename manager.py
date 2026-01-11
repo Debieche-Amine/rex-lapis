@@ -73,21 +73,12 @@ class PositionExecutor:
         self.entry_fill_price: float = 0.0
         self.exit_fill_price: float = 0.0
 
-    def _get_order_final_status(self, order_id: str) -> Optional[Dict]:
-        """
-        Fetches history to verify what happened to a vanished order.
-        Returns the order dict if found, else None.
-        """
-        try:
-            history = self.client.get_order_history(limit=20)
-            for order in history:
-                if order["order_id"] == order_id:
-                    return order
-        except Exception as e:
-            ops_logger.error(f"Failed to fetch order history for {order_id}: {e}")
-        return None
-
-    def execute_cycle(self, current_price: float, open_order_ids: Set[str]) -> ExecutorState:
+    def execute_cycle(
+        self, 
+        current_price: float, 
+        open_order_ids: Set[str], 
+        order_history_map: Dict[str, Any]
+    ) -> ExecutorState:
         
         # ----------------------------------------------------
         # PHASE A: ENTRY LOGIC
@@ -117,8 +108,8 @@ class PositionExecutor:
         elif self.state == ExecutorState.PLACED_ENTRY:
             # Check if order is still open
             if self.active_order_id not in open_order_ids:
-                # It vanished from OPEN orders. Now we verify why.
-                order_data = self._get_order_final_status(self.active_order_id)
+                # It vanished from OPEN orders. Lookup in HISTORY MAP (Passed from Manager).
+                order_data = order_history_map.get(self.active_order_id)
                 
                 if order_data:
                     status = order_data.get('status', '')
@@ -128,13 +119,11 @@ class PositionExecutor:
                         self.active_order_id = None
                         self.state = ExecutorState.FILLED_WAIT
                     elif status in ['Cancelled', 'Rejected', 'Deactivated']:
-                        # Only retry if EXPLICITLY dead
                         ops_logger.warning(f"Entry Order {self.active_order_id} was {status}. Retrying.")
                         self.active_order_id = None
                         self.state = ExecutorState.PENDING_ENTRY
                 else:
-                    # KEY FIX: If not in Open AND not in History, assume Latency.
-                    # Do NOT reset. Wait for next tick.
+                    # Not in Open, Not in History -> Latency. Wait.
                     ops_logger.debug(f"Entry Order {self.active_order_id} invisible (Latency). Waiting...")
 
         # ----------------------------------------------------
@@ -171,7 +160,7 @@ class PositionExecutor:
         elif self.state == ExecutorState.PLACED_EXIT:
             # Check if order is still open
             if self.active_order_id not in open_order_ids:
-                order_data = self._get_order_final_status(self.active_order_id)
+                order_data = order_history_map.get(self.active_order_id)
                 
                 if order_data:
                     status = order_data.get('status', '')
@@ -193,7 +182,7 @@ class PositionExecutor:
                         self.active_order_id = None
                         self.state = ExecutorState.FILLED_WAIT
                 else:
-                    # KEY FIX: Latency protection for Exit too
+                    # Latency wait
                     ops_logger.debug(f"Exit Order {self.active_order_id} invisible (Latency). Waiting...")
 
         return self.state
@@ -319,14 +308,28 @@ class TradeManager:
 
         try:
             ops_logger.debug("Tick Start")
+            
+            # 1. Fetch Market Data
             current_price = self.client.get_current_price()
             open_orders_raw = self.client.get_open_orders()
+            
+            # 2. Fetch History (Optimized: Once per tick, limit 200)
+            history_raw = self.client.get_order_history(limit=200)
+            
+            # 3. Create Lookups (O(1) access)
             active_order_ids: Set[str] = {o['order_id'] for o in open_orders_raw}
+            history_map: Dict[str, Any] = {o['order_id']: o for o in history_raw}
             
             active_executors: List[PositionExecutor] = []
             
+            # 4. Delegate to Executors with new history map
             for executor in self.executors:
-                status = executor.execute_cycle(current_price, active_order_ids)
+                status = executor.execute_cycle(
+                    current_price=current_price, 
+                    open_order_ids=active_order_ids, 
+                    order_history_map=history_map
+                )
+                
                 if status != ExecutorState.COMPLETED:
                     active_executors.append(executor)
                 else:
