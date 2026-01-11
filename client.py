@@ -285,3 +285,39 @@ class Client:
             symbol=self.symbol
         )
 
+    def get_order_history(self, limit: int = 50, start_time: int = None):
+        """
+        Fetches historical orders (Filled, Cancelled, Rejected).
+        Bybit V5 Default: Last 7 days unless start_time is provided.
+        
+        :param limit: Number of records to fetch (max 100).
+        :param start_time: (Optional) Start timestamp in milliseconds.
+        """
+        # Prepare arguments
+        params = {
+            "category": "linear",
+            "symbol": self.symbol,
+            "limit": limit
+        }
+        if start_time:
+            params["startTime"] = start_time
+
+        response = self.session.get_order_history(**params)
+        
+        history = []
+        if "list" in response["result"]:
+            for order in response["result"]["list"]:
+                history.append({
+                    "order_id": order["orderId"],
+                    "price": float(order["price"]) if order["price"] else 0.0,
+                    "avg_price": float(order["avgPrice"]) if order["avgPrice"] else 0.0, # Actual execution price
+                    "qty": float(order["qty"]),
+                    "filled_qty": float(order["cumExecQty"]), # Amount actually filled
+                    "side": order["side"],
+                    "type": order["orderType"],
+                    "status": order["orderStatus"], # e.g., 'Filled', 'Cancelled'
+                    "reduce_only": order["reduceOnly"],
+                    "created_time": int(order["createdTime"]),
+                    "updated_time": int(order["updatedTime"])
+                })
+        return history
