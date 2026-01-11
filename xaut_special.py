@@ -21,8 +21,7 @@ manager.create_normal_traders(4401, 4553, 17, 0.002, 0.30, loop_trade=True, sigm
 # low: 4401 -2.38%
 # high: 4553 +1%
 
-# true mean: 4170   -7.5%
-# my mean: 4360    -3.3%
+# mean: auto
 
 # Simulation Loop
 import time
