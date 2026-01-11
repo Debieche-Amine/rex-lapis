@@ -15,10 +15,10 @@ manager = TradeManager(client, maker_offset_buy=1, maker_offset_sell=1)
 
 
 # manager.load_from_disk("./results/linear.data")
-manager.create_normal_traders(4146, 4553, 73, 0.002, 0.30, loop_trade=True, mean_price=4360,sigma_factor=4.0)
+manager.create_normal_traders(4401, 4553, 17, 0.002, 0.30, loop_trade=True, sigma_factor=4.0)
 
 
-# low: 4146 -8%
+# low: 4401 -2.38%
 # high: 4553 +1%
 
 # true mean: 4170   -7.5%
