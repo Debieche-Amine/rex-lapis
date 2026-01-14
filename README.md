@@ -4,6 +4,12 @@ Every agreement under his rule was absolute, forging trust, commerce, and prospe
 Now as Zhongli, he embodies the belief that a contract—once made—must always be honored.
 
 
+## 0. Gold prediction
+Slope (a): 0.001012899940494811
+Intercept (b): 7.586419247136773
+
+gold(t) = exp(b)*exp(a*t)
+where t is the number of days from 2024-1-1
 
 
 ## 1. Setup
