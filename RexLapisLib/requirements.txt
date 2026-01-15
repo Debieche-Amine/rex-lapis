@@ -2,3 +2,4 @@ pybit
 python-dotenv
 numpy
 scipy
+pandas

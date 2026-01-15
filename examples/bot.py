@@ -1,5 +1,4 @@
-from client import Client
-from manager import TradeManager
+from RexLapisLib import TradeManager,Client
 
 
 

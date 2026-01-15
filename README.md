@@ -1,74 +1,81 @@
-# Rex Lapis
-Rex Lapis, Morax the Geo Archon, is the god who built Liyue on unbreakable contracts and trade.
-Every agreement under his rule was absolute, forging trust, commerce, and prosperity across the land.
-Now as Zhongli, he embodies the belief that a contract—once made—must always be honored.
+# Rex Lapis: The Geo Archon Trading Engine
 
+"I am the Lord of Geo. My word is a contract, and my contract is unbreakable."
 
-## 0. Gold prediction
-Slope (a): 0.001012899940494811
-Intercept (b): 7.586419247136773
+Rex Lapis is an integrated automated trading and technical analysis framework specifically designed for the Bybit V5 platform. The project combines the precision of mathematical contracts (predictions) with the power of programmatic execution, offering full support for Linear Futures and Spot (XAUTUSDT).
 
-gold(t) = exp(b)*exp(a*t)
-where t is the number of days from 2024-1-1
+## 📈 0. Gold Prediction Model (The Geo Archon's Logic)
 
+The engine bases its primary gold predictions on a precise Exponential Growth Model:
 
-## 1. Setup
+$$gold(t) = e^b \cdot e^{a \cdot t}$$
+
+**Mathematical Parameters:**
+*   **Slope ($a$):** `0.001012899940494811`
+*   **Intercept ($b$):** `7.586419247136773`
+*   **Time ($t$):** Number of days elapsed since `2024-01-01`
+
+## 🛠️ 1. Installation & Setup
+
+### Requirements
 
 ```bash
-pip install -r requirements.txt
+Bash
+pip install pybit python-dotenv numpy scipy pandas streamlit plotly
 ```
 
-Create a .env with
-```bash
-API_KEY=
-API_SECRET=
-API_ENDPOINT=demo # or testnet or mainnet
+### Environment Configuration
+
+Create a `.env` file in the root directory:
+
+```dotenv
+API_KEY=your_api_key
+API_SECRET=your_api_secret
+API_ENDPOINT=demo  # Options: demo or mainnet
 ```
-API_TEST determine where to connect:
-- testnet is found on <https://testnet.bybit.com>,
-- mainnet is the normal <https://www.bybit.com>,
-- demo is accessed normally from mainnet, then going to demo trading, The Api endpoint is: <https://api-demo.bybit.com>
 
+**Note:** For real XAUT data, using `mainnet` is recommended.
 
-## 2. Quick Start Example
-Check <./docs/client.md> for a more detailed documentation
+## 🚀 2. Usage Examples
+
+### Fetching Gold Data (XAUUSD/XAUT)
+
+The library supports fetching historical data and saving it in CSV format with deduplication.
 
 ```python
-from client import Client
+# Example for fetching Spot Gold data
+from RexLapisLib import Client, DataProcessor
 
-# 1. Initialize (binds to a specific symbol)
-client = Client("BTCUSDT")
+client = Client(symbol="XAUTUSDT", category="spot", api_endpoint="mainnet")
+processor = DataProcessor(symbol="XAUTUSDT", storage_dir="./data")
 
-# 2. Setup Account (Auto-switches to Isolated Margin & sets Leverage)
-client.setup_bot(leverage=5)
-
-# 3. Get Data
-price = client.get_current_price()
-balance = client.get_usdt_balance()
-
-# Get recent candles (Intervals: "1", "5", "15", "60", "D")
-candles = client.get_candles(interval="60", limit=5)
-last_close = candles[-1]['close']
-
-print(f"Price: ${price} | Balance: ${balance} | Last Close: ${last_close}")
-
-# 4. Place Orders (Returns Order ID string)
-# Note: Inputs are automatically rounded to the correct precision.
-
-# Limit Buy (Maker)
-buy_id = client.place_limit_order(
-    side="Buy", 
-    qty=0.01, 
-    price=60000.50, 
-    post_only=True  # Guarantees Maker fee (cancels if Taker)
-)
-
-# Market Close (Reduce Only)
-sell_id = client.place_market_order(
-    side="Sell", 
-    qty=0.01, 
-    reduce_only=True # Ensures we don't flip position
-)
-
-print(f"Buy ID: {buy_id} | Sell ID: {sell_id}")
+# Fetch data for the last 48 hours with 1-minute interval
+start_ts = ... # timestamp in milliseconds
+historical_df = client.get_historical_klines(interval="1", start_time_ms=start_ts)
+processor.save_to_csv(historical_df)
 ```
+
+## 🖥️ 3. RexLapis Pro Terminal (Visualizer)
+
+The project includes an advanced analytical interface using Streamlit and Plotly.
+
+### Running the Interface:
+
+```bash
+python -m streamlit run examples\visualize.py 
+```
+
+### Terminal Features:
+
+*   **SuperTrend Algorithm:** An intelligent trend detector based on ATR.
+*   **Market Intelligence Score:** An evaluation system (from -7 to +7) that combines RSI, MACD, and Bollinger Bands to provide entry/exit signals.
+*   **Confluence Engine:** Does not rely on a single indicator but on the "confluence" of multiple indicators to ensure contract accuracy.
+*   **No-Cheat Principle:** All calculations are based solely on the current time $t$ and preceding data, ensuring realistic results.
+
+## 🛡️ 4. Rules of the Contract
+
+*   **Maker Enforcement:** The engine consistently uses `PostOnly` orders to ensure the capture of Maker Fees.
+*   **Safety First:** The account is automatically switched to Isolated Margin upon startup.
+*   **Data Integrity:** Data is stored locally to prevent excessive API consumption and allow for rapid analysis.
+
+---

@@ -3,76 +3,61 @@ from decimal import Decimal, ROUND_FLOOR, ROUND_CEILING
 from dotenv import load_dotenv
 from pybit.unified_trading import HTTP
 from pybit.exceptions import InvalidRequestError
+import time
+import pandas as pd
 
 # Load environment variables
 load_dotenv()
 
 class Client:
-    def __init__(self, symbol: str):
+    def __init__(self, symbol: str, api_key: str, api_secret: str, category: str = "linear", api_endpoint: str = "demo"):
         """
-        Initializes the HTTP session and binds this client to a specific symbol.
-        Forces 'linear' category (USDT Perpetuals).
-        Handles API_ENDPOINT switching (demo, testnet, mainnet).
+        Initializes the Bybit Client.
+        :param category: Use "spot" for XAUTUSDT and "linear" for Futures.
         """
-        self.api_key = os.getenv("API_KEY")
-        self.api_secret = os.getenv("API_SECRET")
-        
-        # Options: 'demo', 'testnet', 'mainnet'
-        self.endpoint_env = os.getenv("API_ENDPOINT", "testnet").lower()
+        self.api_key = api_key
+        self.api_secret = api_secret
+        self.endpoint_env = api_endpoint.lower()
         self.symbol = symbol.upper()
+        self.category = category.lower() 
 
-        # 1. Determine URLs and Testnet Flag based on Env
         if self.endpoint_env == "demo":
-            self.testnet = True # Demo behaves like testnet for pybit logic
+            self.testnet = True
             self.http_url = "https://api-demo.bybit.com"
-            self.ws_url = "wss://stream-demo.bybit.com/v5/public/linear" # Correct Demo WS
-        elif self.endpoint_env == "mainnet":
+        else:
             self.testnet = False
             self.http_url = "https://api.bybit.com"
-            self.ws_url = "wss://stream.bybit.com/v5/public/linear"
-        else: # Default to Testnet
-            self.testnet = True
-            self.http_url = "https://api-testnet.bybit.com"
-            self.ws_url = "wss://stream-testnet.bybit.com/v5/public/linear"
 
-        # 2. Initialize HTTP Session
-        self.session = HTTP(
-            testnet=self.testnet,
-            api_key=self.api_key,
-            api_secret=self.api_secret,
-        )
-
-        # 3. Override Endpoint if using Demo
-        # Pybit defaults to standard testnet/mainnet URLs. 
-        # We must manually overwrite it for Demo.
+        self.session = HTTP(testnet=self.testnet, api_key=self.api_key, api_secret=self.api_secret)
         if self.endpoint_env == "demo":
             self.session.endpoint = self.http_url
 
-        print(f"[{self.symbol}] Initialized on {self.endpoint_env.upper()}")
-        # print(f" - HTTP: {self.http_url}")
-        # print(f" - WS:   {self.ws_url}")
-
-        # Cache precision data immediately upon startup
+        print(f"[{self.symbol}] Client initialized for {self.category.upper()} on {self.endpoint_env.upper()}")
         self.precision_data = self._fetch_symbol_info()
 
     # ==================================================================
     # HELPER: PRECISION & ROUNDING (Internal)
     # ==================================================================
-
     def _fetch_symbol_info(self):
-        """Fetches tick size (price) and step size (qty) for the bound symbol."""
+        """Fetches precision data based on category."""
         response = self.session.get_instruments_info(
-            category="linear",
+            category=self.category,
             symbol=self.symbol
         )
-        
         info = response['result']['list'][0]
+        
+        # Spot and Linear have different field names for precision
+        if self.category == "spot":
+            return {
+                'price_tick': str(info['priceFilter']['tickSize']),
+                'qty_step': str(info['lotSizeFilter']['basePrecision']), # Spot specific field
+                'min_qty': str(info['lotSizeFilter']['minOrderQty'])
+            }
         return {
             'price_tick': str(info['priceFilter']['tickSize']),
-            'qty_step': str(info['lotSizeFilter']['qtyStep']),
+            'qty_step': str(info['lotSizeFilter']['qtyStep']), # Linear specific field
             'min_qty': str(info['lotSizeFilter']['minOrderQty'])
         }
-
     def _round_qty(self, qty: float) -> str:
         """Rounds quantity DOWN to the nearest step size."""
         step = Decimal(self.precision_data['qty_step'])
@@ -321,3 +306,33 @@ class Client:
                     "updated_time": int(order["updatedTime"])
                 })
         return history
+    
+    def get_historical_klines(self, interval: str, start_time_ms: int, end_time_ms: int = None):
+        """Fetches historical candles with pagination support."""
+        all_candles = []
+        current_end = end_time_ms if end_time_ms else int(time.time() * 1000)
+        
+        while True:
+            response = self.session.get_kline(
+                category=self.category,
+                symbol=self.symbol,
+                interval=interval,
+                end=current_end,
+                limit=1000 
+            )
+            raw_list = response.get("result", {}).get("list", [])
+            if not raw_list:
+                break
+            all_candles.extend(raw_list)
+            oldest_candle_time = int(raw_list[-1][0])
+            if oldest_candle_time <= start_time_ms:
+                break
+            current_end = oldest_candle_time - 1
+            time.sleep(0.1)
+
+        # Cleanup and convert to DataFrame
+        df = pd.DataFrame(all_candles, columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
+        df["timestamp"] = pd.to_datetime(df["timestamp"].astype(float), unit='ms')
+        for col in ["open", "high", "low", "close", "volume"]:
+            df[col] = df[col].astype(float)
+        return df.sort_values("timestamp").reset_index(drop=True)
