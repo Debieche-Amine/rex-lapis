@@ -1,8 +1,10 @@
+# RexLapisLib\core\client.py
 import os
 from decimal import Decimal, ROUND_FLOOR, ROUND_CEILING
 from dotenv import load_dotenv
 from pybit.unified_trading import HTTP
 from pybit.exceptions import InvalidRequestError
+from pybit.unified_trading import WebSocket
 import time
 import pandas as pd
 
@@ -336,3 +338,36 @@ class Client:
         for col in ["open", "high", "low", "close", "volume"]:
             df[col] = df[col].astype(float)
         return df.sort_values("timestamp").reset_index(drop=True)
+    def start_kline_stream(self, callback, interval: str = "1"):
+        """
+        Starts a WebSocket stream for real-time klines.
+        :param callback: A function to handle the incoming data.
+        """
+        ws = WebSocket(
+            testnet=self.testnet,
+            channel_type="linear",
+            api_key=self.api_key,
+            api_secret=self.api_secret,
+        )
+
+        def handle_message(msg):
+            data = msg.get("data", [])
+            if not data: return
+            
+            # Format to match our DataFrame structure
+            candle = data[0]
+            formatted_data = {
+                "timestamp": pd.to_datetime(int(candle["start"]), unit='ms'),
+                "open": float(candle["open"]),
+                "high": float(candle["high"]),
+                "low": float(candle["low"]),
+                "close": float(candle["close"]),
+                "volume": float(candle["volume"])
+            }
+            callback(formatted_data)
+
+        ws.kline_stream(
+            interval=interval,
+            symbol=self.symbol,
+            callback=handle_message
+        )

@@ -4,7 +4,7 @@ from RexLapisLib import Client, DataProcessor
 # =================================================================
 # CONFIGURATION
 # =================================================================
-SYMBOL = "XAUUSD"
+SYMBOL = "BTCUSDT"
 API_KEY = "q0xnzgz3YlKQNMy0OY"
 API_SECRET = "y4fiS4lCnKqTdy6YmIslDjQwhDC7tGRSYf2p"
 ENVIRONMENT = "demo"
