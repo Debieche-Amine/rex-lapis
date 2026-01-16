@@ -21,8 +21,8 @@ def main():
     # 1. Configuration
     SYMBOL = "XAUTUSDT"
     TIMEFRAME = "1"  # 1-minute interval
-    API_KEY = os.getenv("BYBIT_API_KEY")
-    API_SECRET = os.getenv("BYBIT_API_SECRET")
+    API_KEY = os.getenv("API_KEY")
+    API_SECRET = os.getenv("API_SECRET")
     IS_TESTNET = True # Set to False for Real Money
 
     if not API_KEY or not API_SECRET:
