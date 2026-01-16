@@ -7,9 +7,9 @@ from dotenv import load_dotenv
 # Add project root to path
 sys.path.append(os.getcwd())
 
-from RexLapisLib.core.client import Client
-from RexLapisLib.core.context import LiveContext
-from RexLapisLib.core.engine import TechnicalEngine
+from RexLapisLib import Client
+from RexLapisLib import LiveContext
+from RexLapisLib import TechnicalEngine
 from strategies.advanced_rsi import AdvancedRSIStrategy
 
 # Load API Keys from .env file

@@ -5,10 +5,10 @@ from dotenv import load_dotenv
 # Add project root
 sys.path.append(os.getcwd())
 
-from RexLapisLib.core.backtester import BacktestEngine
-from RexLapisLib.core.data_processor import DataProcessor
-from RexLapisLib.core.client import Client  # <--- Needed for updates
-from RexLapisLib.core.visualizer import show_dashboard
+from RexLapisLib import BacktestEngine
+from RexLapisLib import DataProcessor
+from RexLapisLib import Client
+from RexLapisLib import show_dashboard
 from strategies.SentimentStrategy import SentimentConfluenceStrategy
 
 # Load .env for API Keys (Needed to fetch data)
