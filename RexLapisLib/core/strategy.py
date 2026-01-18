@@ -25,24 +25,33 @@ class Strategy:
         pass
 
     def on_candle_tick(self, df: pd.DataFrame):
-        """
-        Lifecycle Method: Called on every new candle.
+        current_price = df.iloc[-1]['close']
         
-        :param df: A DataFrame containing historical data UP TO the current moment.
-                   The last row is the 'current' candle.
-        """
-        pass
+        if not self.position:
+            target_price = current_price * 0.999 
+            
+            self.buy(
+                qty=10, 
+                price=target_price, 
+                post_only=True 
+            )
+            
+        else:
+            self.sell(
+                qty=self.position['qty'], 
+                reduce_only=True 
+            )
 
     # ==========================================================
     # Helper Methods (Proxies to Context)
     # ==========================================================
-    def buy(self, qty: float, **kwargs):
-        """Execute a Buy order."""
-        return self.ctx.buy(qty, **kwargs)
+    def buy(self, qty: float, price: float = None, post_only: bool = False, reduce_only: bool = False, **kwargs):
+        """Execute a Buy order with professional flags."""
+        return self.ctx.buy(qty, price=price, post_only=post_only, reduce_only=reduce_only, **kwargs)
 
-    def sell(self, qty: float, **kwargs):
-        """Execute a Sell order."""
-        return self.ctx.sell(qty, **kwargs)
+    def sell(self, qty: float, price: float = None, post_only: bool = False, reduce_only: bool = False, **kwargs):
+        """Execute a Sell order with professional flags."""
+        return self.ctx.sell(qty, price=price, post_only=post_only, reduce_only=reduce_only, **kwargs)
     
     @property
     def position(self):

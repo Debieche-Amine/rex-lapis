@@ -9,7 +9,7 @@ from RexLapisLib import BacktestEngine
 from RexLapisLib import DataProcessor
 from RexLapisLib import Client
 from RexLapisLib import show_dashboard
-from strategies.SentimentStrategy import SentimentConfluenceStrategy
+from strategies.pro_features_test_strategy import ProFeaturesTestStrategy
 
 # Load .env for API Keys (Needed to fetch data)
 load_dotenv()
@@ -63,7 +63,7 @@ def main():
     print(f"Loaded {len(df)} candles. Last candle: {df.iloc[-1]['timestamp']}")
 
     # 4. Run Strategy
-    my_strategy = SentimentConfluenceStrategy()
+    my_strategy = ProFeaturesTestStrategy()
     engine = BacktestEngine(strategy=my_strategy, initial_balance=10000)
     
     print("🚀 Running simulation...")

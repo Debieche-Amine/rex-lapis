@@ -4,12 +4,32 @@ from decimal import Decimal, ROUND_FLOOR, ROUND_CEILING
 from dotenv import load_dotenv
 from pybit.unified_trading import HTTP
 from pybit.exceptions import InvalidRequestError
+from pybit.exceptions import ConnectionError, TimeoutError
 from pybit.unified_trading import WebSocket
 import time
+from functools import wraps
 import pandas as pd
 
 # Load environment variables
 load_dotenv()
+
+
+def auto_resync(max_retries=5, delay=2):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            retries = 0
+            while retries < max_retries:
+                try:
+                    return func(*args, **kwargs)
+                except (ConnectionError, TimeoutError) as e:
+                    retries += 1
+                    wait_time = delay * (2 ** (retries - 1)) 
+                    print(f"⚠️ Network Error in {func.__name__}. Retry {retries}/{max_retries} in {wait_time}s...")
+                    time.sleep(wait_time)
+            raise ConnectionError("❌ Max retries reached. Internet connection lost.")
+        return wrapper
+    return decorator
 
 class Client:
     def __init__(self, symbol: str, api_key: str, api_secret: str, category: str = "linear", api_endpoint: str = "demo"):
@@ -30,7 +50,12 @@ class Client:
             self.testnet = False
             self.http_url = "https://api.bybit.com"
 
-        self.session = HTTP(testnet=self.testnet, api_key=self.api_key, api_secret=self.api_secret)
+        self.session = HTTP(
+            testnet=self.testnet, 
+            api_key=self.api_key, 
+            api_secret=self.api_secret,
+            recv_window=20000 
+        )
         if self.endpoint_env == "demo":
             self.session.endpoint = self.http_url
 
@@ -40,6 +65,7 @@ class Client:
     # ==================================================================
     # HELPER: PRECISION & ROUNDING (Internal)
     # ==================================================================
+    @auto_resync()
     def _fetch_symbol_info(self):
         """Fetches precision data based on category."""
         response = self.session.get_instruments_info(
@@ -93,7 +119,7 @@ class Client:
     # ==================================================================
     # ACCOUNT & MARKET DATA
     # ==================================================================
-
+    @auto_resync()
     def get_usdt_balance(self) -> float:
         """Returns available USDT balance in the Unified account."""
         response = self.session.get_wallet_balance(
@@ -108,16 +134,49 @@ class Client:
     def get_current_price(self) -> float:
         """Gets the last traded price for the bound symbol."""
         response = self.session.get_tickers(
-            category="linear",
+            category=self.category,  
             symbol=self.symbol
         )
         return float(response["result"]["list"][0]["lastPrice"])
 
     def get_open_position(self):
         """
-        Returns a dictionary of position data if it exists (size > 0).
-        Otherwise returns None.
+        Returns position data for the current symbol.
+        - For SPOT: Checks if the base coin balance exists in the wallet.
+        - For LINEAR: Checks the active perpetual contract position.
         """
+        if self.category == "spot":
+            # Extract the coin name (e.g., 'XAUT' from 'XAUTUSDT')
+            coin = self.symbol.replace("USDT", "")
+            
+            response = self.session.get_wallet_balance(
+                accountType="UNIFIED",
+                coin=coin
+            )
+            
+            try:
+                # Access the specific coin's data in the Unified account
+                coin_list = response["result"]["list"][0]["coin"]
+                if not coin_list:
+                    return None
+                    
+                coin_data = coin_list[0]
+                balance = float(coin_data["walletBalance"])
+                
+                # We consider a balance > 0.0001 as an active 'Buy' position
+                # This prevents 'dust' amounts from triggering a Sell logic
+                if balance > 0.0001: 
+                    return {
+                        "size": balance,
+                        "qty": balance,
+                        "side": "Buy",
+                        "entry_price": 0.0  # Bybit Spot doesn't return entry_price via API
+                    }
+            except (IndexError, KeyError):
+                return None
+            return None
+
+        # Logic for Linear Futures (Category: linear)
         response = self.session.get_positions(
             category="linear",
             symbol=self.symbol
@@ -131,6 +190,7 @@ class Client:
         if float(pos["size"]) > 0:
             return {
                 "size": float(pos["size"]),
+                "qty": float(pos["size"]),
                 "side": pos["side"],
                 "entry_price": float(pos["avgPrice"]),
                 "unrealized_pnl": float(pos["unrealisedPnl"]),
@@ -145,15 +205,15 @@ class Client:
         :return: List of dicts [Oldest -> Newest]
         """
         response = self.session.get_kline(
-            category="linear",
+            category=self.category, 
             symbol=self.symbol,
             interval=interval,
             limit=limit
         )
-
+        
         raw_list = response["result"]["list"]
         raw_list.reverse() 
-
+        
         cleaned_data = []
         for candle in raw_list:
             cleaned_data.append({
@@ -247,23 +307,18 @@ class Client:
         )
         return response['result']['orderId']
 
+    @auto_resync()
     def place_market_order(self, side: str, qty: float, reduce_only: bool = False) -> str:
-        """
-        Places a Market order.
-        Returns the Order ID (str).
-        """
         safe_qty = self._round_qty(qty)
-
-        # print(f"[{self.symbol}] Placing MARKET {side}: {safe_qty}")
-
         response = self.session.place_order(
-            category="linear",
+            category=self.category,  
             symbol=self.symbol,
             side=side.capitalize(),
             orderType="Market",
             qty=safe_qty,
             reduceOnly=reduce_only
         )
+        print(f"DEBUG: Bybit Response -> {response}")
         return response['result']['orderId']
 
     def cancel_all_orders(self):
@@ -371,3 +426,10 @@ class Client:
             symbol=self.symbol,
             callback=handle_message
         )
+
+    def is_connected(self):
+        try:
+            self.session.get_server_time()
+            return True
+        except Exception:
+            return False

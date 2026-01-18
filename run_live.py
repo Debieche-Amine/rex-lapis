@@ -10,7 +10,7 @@ sys.path.append(os.getcwd())
 from RexLapisLib import Client
 from RexLapisLib import LiveContext
 from RexLapisLib import TechnicalEngine
-from strategies.advanced_rsi import AdvancedRSIStrategy
+from strategies.pro_features_test_strategy import ProFeaturesTestStrategy
 
 # Load API Keys from .env file
 load_dotenv()
@@ -43,42 +43,69 @@ def main():
     context = LiveContext(client)
     
     # Initialize the Strategy and link it to the Live Context
-    strategy = AdvancedRSIStrategy()
+    strategy = ProFeaturesTestStrategy()
     strategy.setup(context)
     
-    # Initialize Technical Engine (for calculating RSI, etc.)
+    # Initialize Technical Engine
     tech_engine = TechnicalEngine()
 
     print(f"Bot initialized for {SYMBOL}. Waiting for next candle...")
 
+    # --- VARIABLE TO TRACK THE LAST PROCESSED CANDLE ---
+    last_processed_timestamp = None 
+
     # 3. Live Trading Loop (Polling Mechanism)
     try:
         while True:
-            # A. Fetch the latest 200 candles (enough for indicators)
-            # Note: We use the client to get fresh data
-            candles_data = client.get_candles(interval=TIMEFRAME, limit=200)
-            
-            if not candles_data:
-                print("Warning: Failed to fetch candles. Retrying...")
+            try:
+                # A. Fetch the latest 200 candles
+                candles_data = client.get_candles(interval=TIMEFRAME, limit=200)
+                
+                if not candles_data:
+                    print("Warning: Failed to fetch candles. Retrying...")
+                    time.sleep(5)
+                    continue
+
+                # Convert to DataFrame
+                df = pd.DataFrame(candles_data)
+                df['timestamp'] = pd.to_datetime(df['start_time'].astype(float), unit='ms')
+                df.sort_values('timestamp', inplace=True)
+
+                # B. Apply Indicators
+                df = tech_engine.apply_all_indicators(df)
+
+                # --- CRITICAL FIX HERE ---
+                # Get the timestamp of the newest candle
+                current_candle_timestamp = df.iloc[-1]['timestamp']
+
+                # Check if this timestamp is different from the last one we processed
+                if current_candle_timestamp != last_processed_timestamp:
+                    
+                    print(f"\n[NEW CANDLE DETECTED] {current_candle_timestamp}")
+                    
+                    # C. Execute Strategy (Only once per new candle)
+                    strategy.on_candle_tick(df)
+                    
+                    # Update the tracker
+                    last_processed_timestamp = current_candle_timestamp
+                    
+                    # Optional: Print current close price
+                    print(f"Processed Close Price: {df.iloc[-1]['close']}")
+
+                else:
+                    # We are still in the same minute, do nothing
+                    print(f".", end="", flush=True) # Print a dot to show it's alive
+                
+                # -------------------------
+                
+                # Sleep to avoid API spamming
+                time.sleep(10) 
+
+            except Exception as e:
+                # Catch API errors (like timestamp sync issues) without stopping the bot
+                print(f"\n⚠️ An error occurred: {e}")
+                print("Retrying in 5 seconds...")
                 time.sleep(5)
-                continue
-
-            # Convert to DataFrame
-            df = pd.DataFrame(candles_data)
-            df['timestamp'] = pd.to_datetime(df['start_time'].astype(float), unit='ms')
-            df.sort_values('timestamp', inplace=True)
-
-            # B. Apply Technical Indicators (Calculates RSI, MA, etc.)
-            df = tech_engine.apply_all_indicators(df)
-
-            # C. Execute Strategy Logic
-            # We pass the full DataFrame. The strategy looks at the last row.
-            strategy.on_candle_tick(df)
-
-            # D. Wait for the next cycle
-            # For a 1-minute timeframe, we sleep for a bit to avoid spamming API
-            print(f"[{pd.Timestamp.now()}] Tick processed. Close: {df.iloc[-1]['close']}")
-            time.sleep(10) # Check every 10 seconds
 
     except KeyboardInterrupt:
         print("\n--- Stopping Live Engine ---")
