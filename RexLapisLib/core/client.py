@@ -1,14 +1,13 @@
-# RexLapisLib\core\client.py
 import os
-from decimal import Decimal, ROUND_FLOOR, ROUND_CEILING
-from dotenv import load_dotenv
-from pybit.unified_trading import HTTP
-from pybit.exceptions import InvalidRequestError
-from pybit.exceptions import ConnectionError, TimeoutError
-from pybit.unified_trading import WebSocket
 import time
-from functools import wraps
 import pandas as pd
+from decimal import Decimal, ROUND_FLOOR, ROUND_CEILING
+from functools import wraps
+from dotenv import load_dotenv
+
+from pybit.unified_trading import HTTP, WebSocket
+from pybit.exceptions import InvalidRequestError, FailedRequestError
+from requests.exceptions import ConnectionError, Timeout
 
 # Load environment variables
 load_dotenv()
@@ -67,25 +66,25 @@ class Client:
     # ==================================================================
     @auto_resync()
     def _fetch_symbol_info(self):
-        """Fetches precision data based on category."""
+        """Fetches precision data based on category dynamically."""
         response = self.session.get_instruments_info(
             category=self.category,
             symbol=self.symbol
         )
         info = response['result']['list'][0]
         
-        # Spot and Linear have different field names for precision
         if self.category == "spot":
             return {
                 'price_tick': str(info['priceFilter']['tickSize']),
-                'qty_step': str(info['lotSizeFilter']['basePrecision']), # Spot specific field
+                'qty_step': str(info['lotSizeFilter']['basePrecision']), 
                 'min_qty': str(info['lotSizeFilter']['minOrderQty'])
             }
         return {
             'price_tick': str(info['priceFilter']['tickSize']),
-            'qty_step': str(info['lotSizeFilter']['qtyStep']), # Linear specific field
+            'qty_step': str(info['lotSizeFilter']['qtyStep']), 
             'min_qty': str(info['lotSizeFilter']['minOrderQty'])
         }
+    
     def _round_qty(self, qty: float) -> str:
         """Rounds quantity DOWN to the nearest step size."""
         step = Decimal(self.precision_data['qty_step'])
@@ -227,19 +226,15 @@ class Client:
             
         return cleaned_data
 
+    @auto_resync()
     def get_open_orders(self):
-        """Fetches active Limit/Stop orders for the bound symbol."""
-        response = self.session.get_open_orders(
-            category="linear",
-            symbol=self.symbol
-        )
-        
+        response = self.session.get_open_orders(category=self.category, symbol=self.symbol)
         orders = []
         if "list" in response["result"]:
             for order in response["result"]["list"]:
                 orders.append({
                     "order_id": order["orderId"],
-                    "price": float(order["price"]),
+                    "price": float(order["price"]) if order["price"] else 0.0,
                     "qty": float(order["qty"]),
                     "side": order["side"],
                     "type": order["orderType"],
@@ -281,22 +276,14 @@ class Client:
             if "110043" not in str(e):
                 print(f"Warning setting leverage: {e}")
 
+    @auto_resync()
     def place_limit_order(self, side: str, qty: float, price: float, reduce_only: bool = False, post_only: bool = False) -> str:
-        """
-        Places a Limit order.
-        :param post_only: If True, sets timeInForce to 'PostOnly' (guarantees Maker fee).
-        Returns the Order ID (str).
-        """
         safe_qty = self._round_qty(qty)
         safe_price = self._round_price(price, side)
-        
-        # Determine TimeInForce
         tif = "PostOnly" if post_only else "GTC"
 
-        # print(f"[{self.symbol}] Placing LIMIT {side} ({tif}): {safe_qty} @ {safe_price}")
-
         response = self.session.place_order(
-            category="linear",
+            category=self.category, 
             symbol=self.symbol,
             side=side.capitalize(),
             orderType="Limit",
@@ -311,7 +298,7 @@ class Client:
     def place_market_order(self, side: str, qty: float, reduce_only: bool = False) -> str:
         safe_qty = self._round_qty(qty)
         response = self.session.place_order(
-            category=self.category,  
+            category=self.category,
             symbol=self.symbol,
             side=side.capitalize(),
             orderType="Market",
@@ -320,7 +307,7 @@ class Client:
         )
         print(f"DEBUG: Bybit Response -> {response}")
         return response['result']['orderId']
-
+    
     def cancel_all_orders(self):
         return self.session.cancel_all_orders(
             category="linear",

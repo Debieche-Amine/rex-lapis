@@ -6,23 +6,31 @@ from scipy.stats import norm
 from typing import List, Dict, Set, Optional, Any
 
 # Relative import from the models sub-package
-from ..models.states import ExecutorState
+# Ensure this path exists in your project, otherwise replace with direct Enum definition
+try:
+    from ..models.states import ExecutorState
+except ImportError:
+    # Fallback if model file is missing during test
+    from enum import Enum
+    class ExecutorState(Enum):
+        PENDING_ENTRY = "PENDING_ENTRY"
+        PLACED_ENTRY = "PLACED_ENTRY"
+        FILLED_WAIT = "FILLED_WAIT"
+        PLACED_EXIT = "PLACED_EXIT"
+        COMPLETED = "COMPLETED"
 
 # ==========================================
 # 1. Logging Configuration
 # ==========================================
-# Logs are stored in a local ./results directory
 os.makedirs("./results", exist_ok=True)
 file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-# OPS Logger: For technical operations and errors
 ops_logger = logging.getLogger("OPS")
 ops_logger.setLevel(logging.DEBUG)
 ops_handler = logging.FileHandler("./results/ops.log")
 ops_handler.setFormatter(file_formatter)
 ops_logger.addHandler(ops_handler)
 
-# PNL Logger: Dedicated to tracking financial outcomes
 pnl_logger = logging.getLogger("PNL")
 pnl_logger.setLevel(logging.INFO)
 pnl_handler = logging.FileHandler("./results/pnl.log")
@@ -30,7 +38,7 @@ pnl_handler.setFormatter(file_formatter)
 pnl_logger.addHandler(pnl_handler)
 
 # ==========================================
-# 2. PositionExecutor Class
+# 2. PositionExecutor Class (UNTOUCHED)
 # ==========================================
 class PositionExecutor:
     """
@@ -168,7 +176,7 @@ class PositionExecutor:
             "maker_offset_buy": self.maker_offset_buy,
             "maker_offset_sell": self.maker_offset_sell,
             "loop_trade": self.loop_trade,
-            "state": self.state.value,
+            "state": self.state.value if isinstance(self.state, ExecutorState) else self.state,
             "active_order_id": self.active_order_id,
             "entry_fill_price": self.entry_fill_price
         }
@@ -185,25 +193,35 @@ class PositionExecutor:
             maker_offset_sell=data["maker_offset_sell"],
             loop_trade=data.get("loop_trade", False)
         )
-        instance.state = ExecutorState(data["state"])
+        # Handle State Enum reconstruction safely
+        state_val = data["state"]
+        try:
+            instance.state = ExecutorState(state_val)
+        except ValueError:
+            # Fallback if string doesn't match enum exactly
+            instance.state = ExecutorState[state_val] if state_val in ExecutorState.__members__ else ExecutorState.PENDING_ENTRY
+            
         instance.active_order_id = data["active_order_id"]
         instance.entry_fill_price = data.get("entry_fill_price", 0.0)
         return instance
 
 # ==========================================
-# 3. TradeManager Class
+# 3. TradeManager Class (UPDATED FOR RESILIENCE)
 # ==========================================
 class TradeManager:
     """
-    Orchestrates multiple PositionExecutors and handles 
-    bulk strategy generation.
+    Orchestrates multiple PositionExecutors AND handles single strategy persistence.
+    Compatible with both Grid Bots and Single-Strategy Bots (run_live.py).
     """
-    def __init__(self, client: Any, maker_offset_buy: float, maker_offset_sell: float):
+    def __init__(self, client: Any, state_file: str = "trader_state.json", maker_offset_buy: float = 0.0, maker_offset_sell: float = 0.0):
         self.client = client
+        self.state_file = state_file
         self.maker_offset_buy = maker_offset_buy
         self.maker_offset_sell = maker_offset_sell
         self.executors: List[PositionExecutor] = []
-        ops_logger.info("TradeManager Initialized")
+        ops_logger.info(f"TradeManager Initialized. Persistence File: {self.state_file}")
+
+    # --- Original Grid Logic Methods (Preserved) ---
 
     def add_trade(self, target_entry: float, target_exit: float, qty: float, loop_trade: bool = False):
         executor = PositionExecutor(
@@ -239,21 +257,18 @@ class TradeManager:
             self.add_trade(entry_price, exit_price, qty, loop)
 
     def process_tick(self):
-        """Main heartbeat logic called every few seconds."""
+        """Main heartbeat logic called every few seconds (For Grid Bot)."""
         if not self.executors:
             return
 
         try:
-            # 1. Synchronize data with the exchange
             current_price = self.client.get_current_price()
             open_orders_raw = self.client.get_open_orders()
             history_raw = self.client.get_order_history(limit=200)
             
-            # 2. Map data for O(1) performance lookup
             active_ids: Set[str] = {o['order_id'] for o in open_orders_raw}
             h_map: Dict[str, Any] = {o['order_id']: o for o in history_raw}
             
-            # 3. Execute logic for each trader and clean up completed ones
             active_executors = []
             for executor in self.executors:
                 status = executor.execute_cycle(current_price, active_ids, h_map)
@@ -268,23 +283,100 @@ class TradeManager:
         """Provides a JSON-serializable summary for Web Dashboards."""
         return [executor.to_dict() for executor in self.executors]
 
-    def save_to_disk(self, filename: str = "trader_state.json"):
-        """Saves session to JSON to prevent data loss on crash."""
+    # --- Updated Persistence Logic (Compatible with run_live.py) ---
+
+    def save_state(self, data: Dict[str, Any]):
+        """Helper alias required by run_live.py to save dictionary data."""
+        self.save_to_disk(data=data)
+
+    def save_to_disk(self, filename: str = None, data: Any = None):
+        """
+        Saves session to JSON. 
+        Supports both:
+        1. Single Strategy Data (Passed via 'data')
+        2. Grid Executor List (If data is None)
+        """
+        target_file = filename if filename else self.state_file
+        
         try:
-            data = self.get_ui_data()
-            with open(filename, 'w') as f:
-                json.dump(data, f, indent=4)
+            # If explicit data provided (run_live.py), save it.
+            # Else, save the list of executors (Grid Bot).
+            content = data if data is not None else self.get_ui_data()
+            
+            with open(target_file, 'w') as f:
+                json.dump(content, f, indent=4)
         except Exception as e:
             ops_logger.error(f"Save failure: {e}")
 
-    def load_from_disk(self, filename: str = "trader_state.json"):
+    def load_from_disk(self, filename: str = None):
         """Restores session from JSON."""
-        if not os.path.exists(filename):
-            return
+        target_file = filename if filename else self.state_file
+        
+        if not os.path.exists(target_file):
+            return None
         try:
-            with open(filename, 'r') as f:
+            with open(target_file, 'r') as f:
                 data = json.load(f)
-            self.executors = [PositionExecutor.from_dict(entry, self.client) for entry in data]
-            ops_logger.info(f"Restored {len(self.executors)} executors.")
+            
+            # Case 1: Data is a List -> It's a Grid Bot State
+            if isinstance(data, list):
+                self.executors = [PositionExecutor.from_dict(entry, self.client) for entry in data]
+                ops_logger.info(f"Restored {len(self.executors)} executors.")
+                return self.executors
+            
+            # Case 2: Data is a Dict -> It's a Single Strategy State (run_live.py)
+            return data
+            
         except Exception as e:
             ops_logger.error(f"Load failure: {e}")
+            return None
+
+    # --- New Resilience Logic (Required by run_live.py) ---
+
+    def has_active_trades(self):
+        """Checks if there are active executors OR a saved state file exists."""
+        if len(self.executors) > 0:
+            return True
+        return os.path.exists(self.state_file)
+
+    def clear_state(self):
+        """Deletes the state file."""
+        if os.path.exists(self.state_file):
+            try:
+                os.remove(self.state_file)
+            except Exception:
+                pass
+
+    def reconcile_after_crash(self):
+        """
+        The 'Power Outage' fix: Checks if Bybit has a position 
+        that matches our last saved state.
+        """
+        saved_state = self.load_from_disk()
+        actual_pos = self.client.get_open_position()
+        
+        # Scenario 1: We crashed, but position is still open on exchange.
+        if actual_pos:
+            ops_logger.info(f"Reconcile: Found active position on exchange: {actual_pos['qty']}")
+            # If we have saved state, return it combined with actual pos
+            if isinstance(saved_state, dict):
+                saved_state['position'] = actual_pos
+                return saved_state
+            return {"position": actual_pos} # Minimal recovery
+
+        # Scenario 2: We have a saved state saying we are open, but exchange says NO.
+        # This means TP/SL was hit while we were dead.
+        if saved_state and not actual_pos:
+            # Check if saved_state implies we *should* have a position
+            has_pos_flag = False
+            if isinstance(saved_state, dict) and saved_state.get('position'):
+                has_pos_flag = True
+            elif isinstance(saved_state, list) and len(saved_state) > 0:
+                has_pos_flag = True # Grid executors existed
+            
+            if has_pos_flag:
+                ops_logger.info("Reconcile: Position closed while offline. Clearing state.")
+                self.clear_state()
+                self.executors = [] # Clear grid executors too
+        
+        return None

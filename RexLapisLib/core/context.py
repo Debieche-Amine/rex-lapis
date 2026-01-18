@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import pandas as pd
 import time
 
@@ -8,7 +8,6 @@ class IContext(ABC):
     
     @abstractmethod
     def set_leverage(self, leverage: int):
-        """Sets the leverage for the account/symbol."""
         pass
 
     @abstractmethod
@@ -27,19 +26,34 @@ class IContext(ABC):
     def get_position(self) -> Optional[Dict[str, Any]]:
         pass
 
+    @property
+    @abstractmethod
+    def pending_orders(self) -> List[Dict]:
+        """Returns a list of active open orders."""
+        pass
+
     @abstractmethod
     def log(self, message: str):
         pass
 
-# ---------------------------------------------------------
-# Live Context
-# ---------------------------------------------------------
+# =========================================================
+# 1. LIVE CONTEXT (Fixed: Bridges Strategy to Exchange)
+# =========================================================
 class LiveContext(IContext):
     def __init__(self, client):
         self.client = client
         self._last_sync_time = 0
 
+    @property
+    def pending_orders(self) -> List[Dict]:
+        """
+        CRITICAL FIX: Fetches real open orders from Bybit.
+        This allows the strategy to check 'self.ctx.pending_orders' without crashing.
+        """
+        return self.client.get_open_orders()
+
     def _ensure_sync(self):
+        """Forces a refresh if data is stale (Resilience feature)."""
         current_time = time.time()
         if current_time - self._last_sync_time > 30:
             self._last_sync_time = current_time
@@ -70,13 +84,9 @@ class LiveContext(IContext):
     def log(self, message: str):
         print(f"[LIVE] {message}")
 
-# ---------------------------------------------------------
-# Backtest Context (The Logic Fix)
-# ---------------------------------------------------------
-from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
-import pandas as pd
-
+# =========================================================
+# 2. BACKTEST CONTEXT (Preserved: Full Simulation Logic)
+# =========================================================
 class BacktestContext(IContext):
     def __init__(self, initial_balance: float = 10000, fee_rate: float = 0.0006):
         self.balance = initial_balance
@@ -84,19 +94,15 @@ class BacktestContext(IContext):
         self.leverage = 1 
         self.position = None 
         self.trades = []
-        self.pending_orders = [] # NEW: Stores Limit orders waiting for price hit
+        self.pending_orders = [] # Local list for simulation
         self.current_price = 0.0
         self.current_time = None
 
     def update_state(self, price: float, time, candle: pd.Series = None):
-        """
-        Updates the internal state. 
-        If a candle is provided, it checks if any pending orders were filled.
-        """
+        """Updates internal state and checks for Limit fills."""
         self.current_price = price
         self.current_time = time
         
-        # Check if any limit orders were triggered by this candle's price action
         if candle is not None:
             self._check_pending_orders(candle)
 
@@ -104,11 +110,7 @@ class BacktestContext(IContext):
         self.leverage = leverage
 
     def buy(self, qty: float, price: float = None, post_only: bool = False, reduce_only: bool = False, **kwargs):
-        """
-        Handles Buy orders. 
-        If a price is provided, it acts as a Limit Order and enters the pending queue.
-        """
-        # 1. Post-Only Check: Reject if price would execute as a Taker immediately
+        # 1. Post-Only Check
         if post_only and price and price >= self.current_price:
             self.log(f"REJECTED: Post-Only Buy Limit ({price}) is Taker (Market: {self.current_price})")
             return None
@@ -118,7 +120,7 @@ class BacktestContext(IContext):
             self.log("REJECTED: Reduce-Only Buy requested without a Short position.")
             return None
 
-        # 3. Limit Order Logic: If price is far from market, add to pending
+        # 3. Limit Order Logic
         if price and price < self.current_price:
             self.pending_orders.append({
                 'side': 'Buy', 'qty': qty, 'price': price, 
@@ -126,15 +128,11 @@ class BacktestContext(IContext):
             })
             return "BT_PENDING"
 
-        # 4. Immediate Execution (Market Order or Price Hit)
+        # 4. Immediate Execution
         exec_price = price if price else self.current_price
         return self._execute_buy(qty, exec_price, reduce_only)
 
     def sell(self, qty: float, price: float = None, post_only: bool = False, reduce_only: bool = False, **kwargs):
-        """
-        Handles Sell orders. 
-        If a price is provided, it acts as a Limit Order and enters the pending queue.
-        """
         # 1. Post-Only Check
         if post_only and price and price <= self.current_price:
             self.log(f"REJECTED: Post-Only Sell Limit ({price}) is Taker (Market: {self.current_price})")
@@ -145,7 +143,7 @@ class BacktestContext(IContext):
             self.log("REJECTED: Reduce-Only Sell requested without a Long position.")
             return None
 
-        # 3. Limit Order Logic: Add to pending
+        # 3. Limit Order Logic
         if price and price > self.current_price:
             self.pending_orders.append({
                 'side': 'Sell', 'qty': qty, 'price': price, 
@@ -158,7 +156,6 @@ class BacktestContext(IContext):
         return self._execute_sell(qty, exec_price, reduce_only)
 
     def _execute_buy(self, qty: float, exec_price: float, reduce_only: bool):
-        """Internal logic for executing a Buy transaction."""
         total_value = qty * exec_price
         required_margin = total_value / self.leverage
         fee = total_value * self.fee_rate
@@ -168,12 +165,10 @@ class BacktestContext(IContext):
             self.log(f"INSUFFICIENT BALANCE: Need ${total_cost:.2f}, Have ${self.balance:.2f}")
             return None
 
-        # Logic: Flip Position (Close Sell then Open Buy)
         if self.position and self.position['side'] == 'Sell':
             self._close_position(exec_price)
             if reduce_only: return "BT_CLOSE"
 
-        # Weighted Average Entry Logic
         if not self.position:
             self.position = {
                 'side': 'Buy', 'qty': qty, 'entry_price': exec_price, 'margin_used': required_margin
@@ -190,19 +185,13 @@ class BacktestContext(IContext):
         return "BT_ID"
 
     def _execute_sell(self, qty: float, exec_price: float, reduce_only: bool):
-        """Internal logic for executing a Sell transaction."""
-        # Logic: If Buy exists, Close it
         if self.position and self.position['side'] == 'Buy':
             self._close_position(exec_price)
             return "BT_ID"
-        
-        # Short Selling Logic (Optional)
         if reduce_only: return None
-        # Add additional short logic here if required
         return None
 
     def _check_pending_orders(self, candle: pd.Series):
-        """Checks if the candle's High/Low prices triggered any pending Limit orders."""
         for order in self.pending_orders[:]:
             if order['side'] == 'Buy' and candle['low'] <= order['price']:
                 self.log(f"LIMIT FILL: Buy {order['qty']} at {order['price']}")
