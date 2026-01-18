@@ -87,6 +87,9 @@ class LiveContext(IContext):
 # =========================================================
 # 2. BACKTEST CONTEXT (Preserved: Full Simulation Logic)
 # =========================================================
+# =========================================================
+# 2. BACKTEST CONTEXT (FIXED)
+# =========================================================
 class BacktestContext(IContext):
     def __init__(self, initial_balance: float = 10000, fee_rate: float = 0.0006):
         self.balance = initial_balance
@@ -94,7 +97,7 @@ class BacktestContext(IContext):
         self.leverage = 1 
         self.position = None 
         self.trades = []
-        self.pending_orders = [] # Local list for simulation
+        self._pending_orders = [] 
         self.current_price = 0.0
         self.current_time = None
 
@@ -109,6 +112,10 @@ class BacktestContext(IContext):
     def set_leverage(self, leverage: int):
         self.leverage = leverage
 
+    @property
+    def pending_orders(self) -> List[Dict]:
+        return self._pending_orders
+
     def buy(self, qty: float, price: float = None, post_only: bool = False, reduce_only: bool = False, **kwargs):
         # 1. Post-Only Check
         if post_only and price and price >= self.current_price:
@@ -122,7 +129,7 @@ class BacktestContext(IContext):
 
         # 3. Limit Order Logic
         if price and price < self.current_price:
-            self.pending_orders.append({
+            self._pending_orders.append({
                 'side': 'Buy', 'qty': qty, 'price': price, 
                 'post_only': post_only, 'reduce_only': reduce_only
             })
@@ -145,7 +152,7 @@ class BacktestContext(IContext):
 
         # 3. Limit Order Logic
         if price and price > self.current_price:
-            self.pending_orders.append({
+            self._pending_orders.append({
                 'side': 'Sell', 'qty': qty, 'price': price, 
                 'post_only': post_only, 'reduce_only': reduce_only
             })
@@ -192,15 +199,15 @@ class BacktestContext(IContext):
         return None
 
     def _check_pending_orders(self, candle: pd.Series):
-        for order in self.pending_orders[:]:
+        for order in self._pending_orders[:]:
             if order['side'] == 'Buy' and candle['low'] <= order['price']:
                 self.log(f"LIMIT FILL: Buy {order['qty']} at {order['price']}")
                 self._execute_buy(order['qty'], order['price'], order['reduce_only'])
-                self.pending_orders.remove(order)
+                self._pending_orders.remove(order)
             elif order['side'] == 'Sell' and candle['high'] >= order['price']:
                 self.log(f"LIMIT FILL: Sell {order['qty']} at {order['price']}")
                 self._execute_sell(order['qty'], order['price'], order['reduce_only'])
-                self.pending_orders.remove(order)
+                self._pending_orders.remove(order)
 
     def _close_position(self, exit_price: float):
         if not self.position: return

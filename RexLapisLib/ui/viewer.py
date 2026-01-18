@@ -37,7 +37,7 @@ SETTINGS_FILE = "view_settings.json"
 RESULTS_PATH = "latest_simulation.pkl"
 
 def load_settings():
-    default = {"timeframe": "Original", "max_candles": 2000}
+    default = {"timeframe": "Original", "max_candles": 10000}
     if os.path.exists(SETTINGS_FILE):
         try:
             with open(SETTINGS_FILE, 'r') as f: return json.load(f)
@@ -134,7 +134,7 @@ if 'macd' in df_full.columns: oscillator_options.append('MACD')
 if 'score' in df_full.columns: oscillator_options.append('Score')
 
 st.sidebar.markdown("### ⚙️ View Settings")
-max_candles = st.sidebar.select_slider("Data Window", [500, 1000, 2000, 5000, 10000], key="sel_limit", on_change=save_settings)
+max_candles = st.sidebar.select_slider("Data Window", [500, 1000, 2000, 5000, 10000, 50000], key="sel_limit", on_change=save_settings)
 selected_tf = st.sidebar.selectbox("Timeframe", ["Original", "5min", "15min", "1H", "4H", "1D"], key="sel_tf", on_change=save_settings)
 
 st.sidebar.markdown("---")
@@ -200,49 +200,48 @@ for i, overlay in enumerate(selected_overlays):
             name=overlay.upper(), line=dict(width=1, color=colors[i%len(colors)])
         ), row=curr, col=1)
 
-# --- TRADES (FIXED POSITIONING) ---
+# --- TRADES (PERFECT ALIGNMENT FIX) ---
 if show_trades and not df_trades.empty:
-    # 1. Snap Time
-    aligned_trades = align_trades_mathematically(df_trades, selected_tf)
+    min_time = df_display['timestamp'].min()
+    max_time = df_display['timestamp'].max()
     
-    # 2. Get Price Levels for Y-Positioning
-    # We merge with candle data ONLY to get High/Low for positioning logic
-    # (Not for time alignment anymore)
-    visual_data = pd.merge(
-        aligned_trades, 
-        df_display[['timestamp', 'high', 'low']], 
-        left_on='plot_time', 
-        right_on='timestamp', 
-        how='inner' # Only show trades that exist in visible candles
-    )
+    df_trades['time'] = pd.to_datetime(df_trades['time'])
+    visible_trades = df_trades[(df_trades['time'] >= min_time) & (df_trades['time'] <= max_time)].copy()
     
-    if not visual_data.empty:
-        buys = visual_data[visual_data['type'] == 'Buy']
-        sells = visual_data[visual_data['type'].isin(['Sell', 'Close'])]
-        
-        # FIX: Offset Calculation (e.g., 0.2% away from candle)
-        # This prevents the arrow from touching the wick
+    freq_map = {
+        "1min": "1min", "5min": "5min", "15min": "15min", 
+        "1H": "1h", "4H": "4h", "1D": "1D"
+    }
+    current_freq = freq_map.get(selected_tf)
+    
+    if current_freq and not visible_trades.empty:
+        visible_trades['plot_time'] = visible_trades['time'].dt.floor(current_freq)
+    else:
+        visible_trades['plot_time'] = visible_trades['time']
+
+    if not visible_trades.empty:
+        buys = visible_trades[visible_trades['type'] == 'Buy']
+        sells = visible_trades[visible_trades['type'].isin(['Sell', 'Close'])]
         
         if not buys.empty:
             fig.add_trace(go.Scatter(
                 x=buys['plot_time'], 
-                y=buys['low'] * 0.998, # 0.2% below Low
+                y=buys['price'], 
                 mode='markers', 
-                marker=dict(symbol='triangle-up', size=12, color='#00E676', line=dict(width=1, color='black')),
-                name="Buy", hovertemplate="BUY<br>Price: %{customdata:.2f}<extra></extra>",
-                customdata=buys['price']
+                marker=dict(symbol='triangle-up', size=14, color='#00E676', line=dict(width=1, color='black')),
+                name="Buy", hovertemplate="BUY<br>Price: %{y:.2f}<br>Time: %{text}<extra></extra>",
+                text=buys['time'] 
             ), row=curr, col=1)
         
         if not sells.empty:
             fig.add_trace(go.Scatter(
                 x=sells['plot_time'], 
-                y=sells['high'] * 1.002, # 0.2% above High
+                y=sells['price'], 
                 mode='markers', 
-                marker=dict(symbol='triangle-down', size=12, color='#FF1744', line=dict(width=1, color='black')),
-                name="Sell", hovertemplate="SELL<br>Price: %{customdata:.2f}<extra></extra>",
-                customdata=sells['price']
+                marker=dict(symbol='triangle-down', size=14, color='#FF1744', line=dict(width=1, color='black')),
+                name="Sell", hovertemplate="SELL<br>Price: %{y:.2f}<br>Time: %{text}<extra></extra>",
+                text=sells['time'] 
             ), row=curr, col=1)
-
 # --- OSCILLATORS ---
 for osc in selected_oscillators:
     curr += 1
